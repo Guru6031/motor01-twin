@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MOTOR-01 // Digital Twin</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>
+  :root{
+    --graphite:#1F2428;
+    --graphite-2:#262C31;
+    --panel:#20262A;
+    --steel:#4A6FA5;
+    --copper:#C97C3D;
+    --copper-dim:#8A5A2E;
+    --ok:#5FA875;
+    --warn:#D9A441;
+    --crit:#C4523F;
+    --text:#E7E9EA;
+    --text-dim:#8B949A;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:var(--graphite);overflow:hidden;
+    font-family:'IBM Plex Sans',system-ui,sans-serif;color:var(--text);}
+  #app{display:flex;height:100%;width:100%;}
+  #viewport{flex:1;position:relative;}
+  #canvas-holder{position:absolute;inset:0;}
+  canvas{display:block;}
+
+  .hud-corner{position:absolute;width:26px;height:26px;border-color:var(--copper-dim);opacity:.7;}
+  .hud-tl{top:16px;left:16px;border-top:2px solid;border-left:2px solid;}
+  .hud-tr{top:16px;right:16px;border-top:2px solid;border-right:2px solid;}
+  .hud-bl{bottom:16px;left:16px;border-bottom:2px solid;border-left:2px solid;}
+  .hud-br{bottom:16px;right:16px;border-bottom:2px solid;border-right:2px solid;}
+
+  #viewport-label{position:absolute;top:20px;left:34px;font-family:'IBM Plex Mono',monospace;
+    font-size:11px;letter-spacing:.14em;color:var(--text-dim);text-transform:uppercase;}
+  #viewport-label b{color:var(--copper);}
+  #drag-hint{position:absolute;bottom:22px;left:34px;font-family:'IBM Plex Mono',monospace;
+    font-size:10px;color:var(--text-dim);letter-spacing:.05em;}
+
+  #sidebar{width:340px;min-width:340px;background:var(--panel);border-left:1px solid #33393E;
+    display:flex;flex-direction:column;overflow-y:auto;}
+  .sb-section{padding:20px 22px;border-bottom:1px solid #2C3237;}
+  .sb-title{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;
+    color:var(--text-dim);text-transform:uppercase;margin:0 0 14px 0;}
+
+  #asset-name{font-size:20px;font-weight:600;margin:0;letter-spacing:.01em;}
+  #asset-sub{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);
+    margin-top:4px;}
+
+  .gauge-wrap{display:flex;align-items:center;gap:16px;}
+  #gauge-num{font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:600;}
+  #gauge-label{font-size:11px;color:var(--text-dim);margin-top:2px;}
+
+  .status-pill{display:inline-flex;align-items:center;gap:7px;padding:5px 12px;border-radius:3px;
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    margin-top:10px;}
+  .status-dot{width:7px;height:7px;border-radius:50%;}
+
+  .param-row{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;
+    border-bottom:1px solid #2A3035;}
+  .param-row:last-child{border-bottom:none;}
+  .param-name{font-size:12.5px;color:var(--text-dim);}
+  .param-val{font-family:'IBM Plex Mono',monospace;font-size:14px;}
+  .param-bar-track{height:3px;background:#2E353A;margin-top:6px;border-radius:2px;overflow:hidden;}
+  .param-bar-fill{height:100%;border-radius:2px;transition:width .4s ease, background .4s ease;}
+
+  .mode-btns{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+  .mode-btn{flex:1;min-width:85px;padding:8px 5px;background:var(--graphite-2);border:1px solid #383F45;
+    color:var(--text-dim);font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;
+    border-radius:3px;cursor:pointer;text-transform:uppercase;transition:.15s;}
+  .mode-btn.active{background:var(--steel);color:#fff;border-color:var(--steel);}
+  .mode-btn:hover:not(.active){border-color:var(--copper-dim);color:var(--text);}
+
+  #fault-btn{width:100%;padding:11px;background:var(--copper);border:none;color:#1a1a1a;
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;
+    border-radius:3px;cursor:pointer;font-weight:600;transition:.15s;}
+  #fault-btn:hover{background:#DB8B4C;}
+  #fault-btn:active{transform:scale(.98);}
+  #fault-btn.clear{background:var(--graphite-2);color:var(--text);border:1px solid var(--copper);}
+
+  #aws-config input{background:var(--graphite-2);border:1px solid #383F45;color:var(--text);
+    font-family:'IBM Plex Mono',monospace;font-size:11px;padding:8px;border-radius:3px;}
+  #aws-config input::placeholder{color:#5B6268;}
+  #aws-apply{padding:8px;background:var(--steel);border:none;color:#fff;border-radius:3px;
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;cursor:pointer;
+    text-transform:uppercase;}
+
+  .schema-note{font-size:10.5px;color:var(--text-dim);line-height:1.6;font-family:'IBM Plex Mono',monospace;}
+  .schema-note code{color:var(--copper);}
+
+  #log{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-dim);
+    line-height:1.7;max-height:110px;overflow-y:auto;}
+  #log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="viewport">
+    <div id="canvas-holder"></div>
+    <div class="hud-corner hud-tl"></div>
+    <div class="hud-corner hud-tr"></div>
+    <div class="hud-corner hud-bl"></div>
+    <div class="hud-corner hud-br"></div>
+    <div id="viewport-label">AWS-Connected Digital Twin &nbsp;/&nbsp; <b>MOTOR-01</b></div>
+    <div id="drag-hint">drag to orbit &middot; scroll to zoom</div>
+  </div>
+
+  <div id="sidebar">
+    <div class="sb-section">
+      <h1 id="asset-name">Induction Motor — Bay 3</h1>
+      <div id="asset-sub">AWS IOT SITEWISE &nbsp;·&nbsp; MOTOR-01</div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-title">Composite Health Score</div>
+      <div class="gauge-wrap">
+        <svg width="72" height="72" viewBox="0 0 72 72">
+          <circle cx="36" cy="36" r="30" fill="none" stroke="#2E353A" stroke-width="6"/>
+          <circle id="gauge-ring" cx="36" cy="36" r="30" fill="none" stroke="#5FA875" stroke-width="6"
+            stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="0"
+            transform="rotate(-90 36 36)"/>
+        </svg>
+        <div>
+          <div id="gauge-num">100</div>
+          <div id="gauge-label">HEALTH INDEX</div>
+        </div>
+      </div>
+      <div class="status-pill" id="status-pill" style="background:rgba(95,168,117,.15);color:#5FA875;">
+        <span class="status-dot" style="background:#5FA875;"></span>
+        <span id="status-text">NOMINAL</span>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-title">Live Parameters</div>
+      <div class="param-row"><div><div class="param-name">Vibration (RMS)</div>
+        <div class="param-bar-track"><div class="param-bar-fill" id="bar-vib" style="width:20%;background:var(--steel);"></div></div></div>
+        <div class="param-val" id="val-vib">0.20 m/s²</div></div>
+      <div class="param-row"><div><div class="param-name">Casing Temperature</div>
+        <div class="param-bar-track"><div class="param-bar-fill" id="bar-temp" style="width:35%;background:var(--steel);"></div></div></div>
+        <div class="param-val" id="val-temp">38.0 &deg;C</div></div>
+      <div class="param-row"><div><div class="param-name">Motor Current</div>
+        <div class="param-bar-track"><div class="param-bar-fill" id="bar-cur" style="width:30%;background:var(--steel);"></div></div></div>
+        <div class="param-val" id="val-cur">2.10 A</div></div>
+      <div class="param-row"><div class="param-name">Trend (Health Δ)</div>
+        <div class="param-val" id="val-trend">stable</div></div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-title">Data Source</div>
+      <div class="mode-btns">
+        <button class="mode-btn active" id="btn-demo">Demo</button>
+        <button class="mode-btn" id="btn-aws">Live AWS</button>
+      </div>
+      <button id="fault-btn">Induce Fault (Fan Imbalance)</button>
+
+      <div id="aws-config" style="display:none;flex-direction:column;gap:8px;margin-top:12px;">
+        <input id="aws-endpoint" value="https://t3i2ntqvxczctx5p4vassqu23e0jczip.lambda-url.ap-south-1.on.aws/" aria-label="AWS Lambda Function URL" />
+        <button id="aws-apply">Connect to AWS SiteWise</button>
+        <div class="schema-note">Reads live current (A), temperature (&deg;C), vibration (m/s&sup2;) and health score from AWS IoT SiteWise through your Lambda Function URL. Polls every 5 seconds.</div>
+      </div>
+    </div>
+
+    <div class="sb-section" style="border-bottom:none;flex:1;">
+      <div class="sb-title">Event Log</div>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script type="module">
+// ============================================================
+// CONFIG
+// ============================================================
+const DEFAULT_AWS_ENDPOINT = "https://t3i2ntqvxczctx5p4vassqu23e0jczip.lambda-url.ap-south-1.on.aws/";
+let awsPollTimer = null, awsRequestInFlight = false;
+
+// ============================================================
+// THREE.JS SCENE
+// ============================================================
+const holder = document.getElementById('canvas-holder');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1F2428);
+scene.fog = new THREE.Fog(0x1F2428, 8, 22);
+
+const camera = new THREE.PerspectiveCamera(42, holder.clientWidth/holder.clientHeight, 0.1, 100);
+camera.position.set(4.2, 2.6, 5.2);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(holder.clientWidth, holder.clientHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled = true;
+holder.appendChild(renderer.domElement);
+
+// lights
+scene.add(new THREE.AmbientLight(0x8899aa, .55));
+const key = new THREE.DirectionalLight(0xffffff, 1.1);
+key.position.set(5,7,4); key.castShadow = true;
+key.shadow.mapSize.set(1024,1024);
+scene.add(key);
+const rim = new THREE.PointLight(0xC97C3D, .6, 12);
+rim.position.set(-3,2,-3);
+scene.add(rim);
+
+// floor
+const floor = new THREE.Mesh(
+  new THREE.CircleGeometry(6, 48),
+  new THREE.MeshStandardMaterial({color:0x262C31, roughness:.95, metalness:.05})
+);
+floor.rotation.x = -Math.PI/2;
+floor.receiveShadow = true;
+scene.add(floor);
+
+// grid ring (industrial floor marking)
+const ring = new THREE.Mesh(new THREE.RingGeometry(2.6,2.65,64),
+  new THREE.MeshBasicMaterial({color:0x4A6FA5, transparent:true, opacity:.35, side:THREE.DoubleSide}));
+ring.rotation.x = -Math.PI/2; ring.position.y = 0.01;
+scene.add(ring);
+
+// --- motor assembly group ---
+const motor = new THREE.Group();
+
+// base plate
+const base = new THREE.Mesh(new THREE.BoxGeometry(2.6,0.18,1.6),
+  new THREE.MeshStandardMaterial({color:0x2E353A, roughness:.7, metalness:.4}));
+base.position.y = 0.09; base.castShadow = base.receiveShadow = true;
+motor.add(base);
+
+// bolts
+const boltMat = new THREE.MeshStandardMaterial({color:0x555b60, metalness:.8, roughness:.3});
+[[-1.15,-0.65],[1.15,-0.65],[-1.15,0.65],[1.15,0.65]].forEach(([x,z])=>{
+  const bolt = new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,.22,12), boltMat);
+  bolt.position.set(x,0.2,z); motor.add(bolt);
+});
+
+// motor housing (this is the part whose color reflects health)
+const housingMat = new THREE.MeshStandardMaterial({color:0x5FA875, roughness:.45, metalness:.55});
+const housing = new THREE.Mesh(new THREE.CylinderGeometry(.62,.62,1.5,32), housingMat);
+housing.rotation.z = Math.PI/2;
+housing.position.set(-0.2,0.75,0);
+housing.castShadow = true;
+motor.add(housing);
+
+// cooling fins
+for(let i=0;i<9;i++){
+  const fin = new THREE.Mesh(new THREE.TorusGeometry(.63,.02,8,32),
+    new THREE.MeshStandardMaterial({color:0x3a4046, metalness:.6, roughness:.5}));
+  fin.rotation.y = Math.PI/2;
+  fin.position.set(-0.85+i*0.15, 0.75, 0);
+  motor.add(fin);
+}
+
+// shaft
+const shaft = new THREE.Mesh(new THREE.CylinderGeometry(.09,.09,1.3,16),
+  new THREE.MeshStandardMaterial({color:0xB8BEC2, metalness:.9, roughness:.2}));
+shaft.rotation.z = Math.PI/2;
+shaft.position.set(1.15,0.75,0);
+motor.add(shaft);
+
+// fan group (rotates, and its blade wobble encodes vibration)
+const fanGroup = new THREE.Group();
+fanGroup.position.set(1.75,0.75,0);
+const fanHub = new THREE.Mesh(new THREE.CylinderGeometry(.14,.14,.12,16),
+  new THREE.MeshStandardMaterial({color:0xC97C3D, metalness:.6, roughness:.4}));
+fanHub.rotation.z = Math.PI/2;
+fanGroup.add(fanHub);
+for(let i=0;i<5;i++){
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(.05,.5,.16),
+    new THREE.MeshStandardMaterial({color:0xC97C3D, metalness:.5, roughness:.5}));
+  blade.position.y = .3;
+  const pivot = new THREE.Group();
+  pivot.add(blade);
+  pivot.rotation.x = (i/5)*Math.PI*2;
+  fanGroup.add(pivot);
+}
+motor.add(fanGroup);
+
+// junction box (small accent detail)
+const jbox = new THREE.Mesh(new THREE.BoxGeometry(.34,.28,.34),
+  new THREE.MeshStandardMaterial({color:0x4A6FA5, metalness:.5, roughness:.5}));
+jbox.position.set(-0.2,1.42,0);
+jbox.castShadow = true;
+motor.add(jbox);
+
+scene.add(motor);
+
+// --- orbit-style manual camera control ---
+let isDragging=false, prevX=0, prevY=0, camAngle=0.9, camElev=0.42, camDist=6.6;
+function updateCam(){
+  camera.position.x = Math.sin(camAngle)*camDist*Math.cos(camElev);
+  camera.position.z = Math.cos(camAngle)*camDist*Math.cos(camElev);
+  camera.position.y = Math.sin(camElev)*camDist + 0.6;
+  camera.lookAt(0,0.75,0);
+}
+updateCam();
+renderer.domElement.addEventListener('pointerdown', e=>{isDragging=true;prevX=e.clientX;prevY=e.clientY;});
+window.addEventListener('pointerup', ()=>isDragging=false);
+window.addEventListener('pointermove', e=>{
+  if(!isDragging) return;
+  camAngle -= (e.clientX-prevX)*0.005;
+  camElev = Math.max(-0.15, Math.min(1.1, camElev + (e.clientY-prevY)*0.004));
+  prevX=e.clientX; prevY=e.clientY; updateCam();
+});
+renderer.domElement.addEventListener('wheel', e=>{
+  camDist = Math.max(3.2, Math.min(12, camDist + e.deltaY*0.004)); updateCam();
+}, {passive:true});
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = holder.clientWidth/holder.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(holder.clientWidth, holder.clientHeight);
+});
+
+// ============================================================
+// LIVE STATE — vibration is stored and displayed in m/s²
+// ============================================================
+const state = { vibration:1.96133, temperature:38.0, current:2.10, healthScore:100, prevHealth:100 }; // vibration stored internally in m/s²
+let faultActive = false;
+let fanSpeed = 0.12;
+
+function healthColor(score){
+  if(score>=80) return 0x5FA875;
+  if(score>=50) return 0xD9A441;
+  return 0xC4523F;
+}
+function healthCss(score){
+  if(score>=80) return {c:'#5FA875', bg:'rgba(95,168,117,.15)', label:'NOMINAL'};
+  if(score>=50) return {c:'#D9A441', bg:'rgba(217,164,65,.15)', label:'WARNING'};
+  return {c:'#C4523F', bg:'rgba(196,82,63,.15)', label:'CRITICAL'};
+}
+function paramColor(pct){
+  if(pct<0.55) return 'var(--steel)';
+  if(pct<0.8) return 'var(--warn, #D9A441)';
+  return 'var(--crit, #C4523F)';
+}
+
+function logEvent(msg){
+  const el = document.getElementById('log');
+  const line = document.createElement('div');
+  const t = new Date().toLocaleTimeString();
+  line.textContent = `[${t}] ${msg}`;
+  el.prepend(line);
+  while(el.children.length>12) el.removeChild(el.lastChild);
+}
+
+function applyState(){
+  const { vibration, temperature, current, healthScore } = state;
+  // housing + fan color
+  housingMat.color.setHex(healthColor(healthScore));
+  fanGroup.children.forEach(c=>{ if(c.material) c.material.color.setHex(healthColor(healthScore)); });
+
+  // gauge ring
+  const circumference = 188.5;
+  const offset = circumference * (1 - healthScore/100);
+  const ringEl = document.getElementById('gauge-ring');
+  ringEl.setAttribute('stroke-dashoffset', offset.toFixed(1));
+  ringEl.setAttribute('stroke', '#'+healthColor(healthScore).toString(16).padStart(6,'0'));
+  document.getElementById('gauge-num').textContent = Math.round(healthScore);
+
+  const s = healthCss(healthScore);
+  document.getElementById('status-text').textContent = s.label;
+  const pill = document.getElementById('status-pill');
+  pill.style.background = s.bg; pill.style.color = s.c;
+  pill.querySelector('.status-dot').style.background = s.c;
+
+  document.getElementById('val-vib').textContent = vibration.toFixed(3)+' m/s²';
+  document.getElementById('val-temp').textContent = temperature.toFixed(1)+' °C';
+  document.getElementById('val-cur').textContent = current.toFixed(2)+' A';
+
+  document.getElementById('bar-vib').style.width = Math.min(100, vibration/(1.2*9.80665)*100)+'%';
+  document.getElementById('bar-temp').style.width = Math.min(100, temperature/90*100)+'%';
+  document.getElementById('bar-cur').style.width = Math.min(100, current/6*100)+'%';
+
+  const trendEl = document.getElementById('val-trend');
+  if(healthScore < state.prevHealth - 0.3){ trendEl.textContent = 'declining'; trendEl.style.color = '#D9A441'; }
+  else if(healthScore > state.prevHealth + 0.3){ trendEl.textContent = 'recovering'; trendEl.style.color = '#5FA875'; }
+  else { trendEl.textContent = 'stable'; trendEl.style.color = 'var(--text)'; }
+  state.prevHealth = healthScore;
+
+  fanSpeed = 0.08 + (current/6)*0.35;
+}
+
+// ============================================================
+// DEMO SIMULATION MODE
+// ============================================================
+let simTimer = null;
+function startSim(){
+  stopSim();
+  logEvent('Demo simulation started');
+  simTimer = setInterval(()=>{
+    if(faultActive){
+      state.vibration = (0.75 + Math.random()*0.35) * 9.80665;
+      state.temperature = 62 + Math.random()*10;
+      state.current = 4.6 + Math.random()*0.8;
+    } else {
+      state.vibration = (0.15 + Math.random()*0.12) * 9.80665;
+      state.temperature = 36 + Math.random()*4;
+      state.current = 2.0 + Math.random()*0.3;
+    }
+    const vibDev = Math.min(100, (state.vibration/9.80665)*100);
+    const tempDev = Math.min(100, (state.temperature/80)*100);
+    const curDev = Math.min(100, (state.current/5)*100);
+    state.healthScore = Math.max(0, 100 - (0.4*vibDev + 0.3*tempDev + 0.3*curDev));
+    applyState();
+  }, 900);
+}
+function stopSim(){ if(simTimer) clearInterval(simTimer); simTimer=null; }
+
+// ============================================================
+// LIVE AWS SITEWISE MODE — Function URL returns the latest SiteWise values
+// Vibration from AWS is already in m/s²; do not convert it again.
+// ============================================================
+async function pollAws(endpoint){
+  if(awsRequestInFlight) return;
+  awsRequestInFlight = true;
+  try{
+    const response = await fetch(endpoint, {method:'GET', cache:'no-store'});
+    if(!response.ok) throw new Error('HTTP '+response.status+' '+response.statusText);
+    const data = await response.json();
+    const readings = data.readings || data;
+    if(typeof readings.vibration === 'number') state.vibration = readings.vibration;
+    if(typeof readings.temperature === 'number') state.temperature = readings.temperature;
+    if(typeof readings.current === 'number') state.current = readings.current;
+    if(typeof readings.healthScore === 'number') state.healthScore = readings.healthScore;
+    applyState();
+    const stamp = data.retrievedAt || new Date().toISOString();
+    document.getElementById('status-text').title = 'AWS data retrieved at '+stamp;
+    logEvent('AWS SiteWise updated · '+new Date(stamp).toLocaleTimeString());
+  }catch(err){
+    logEvent('AWS fetch failed: '+err.message+' — verify public URL/CORS and Lambda response headers');
+  }finally{ awsRequestInFlight = false; }
+}
+function stopAwsPolling(){ if(awsPollTimer){clearInterval(awsPollTimer);awsPollTimer=null;} }
+function setActiveMode(activeId){
+  ['btn-demo','btn-aws'].forEach(id=>document.getElementById(id).classList.toggle('active',id===activeId));
+}
+function showOnlyConfig(which){
+  document.getElementById('aws-config').style.display = which==='aws'?'flex':'none';
+}
+
+// ============================================================
+// UI WIRING
+// ============================================================
+document.getElementById('btn-demo').onclick = ()=>{
+  setActiveMode('btn-demo'); showOnlyConfig('none');
+  document.getElementById('fault-btn').style.display = 'block';
+  stopAwsPolling(); startSim();
+  logEvent('Demo simulation active');
+};
+document.getElementById('btn-aws').onclick = ()=>{
+  setActiveMode('btn-aws'); showOnlyConfig('aws');
+  document.getElementById('fault-btn').style.display = 'none';
+  stopSim(); stopAwsPolling();
+  logEvent('AWS SiteWise mode selected');
+};
+document.getElementById('aws-apply').onclick = ()=>{
+  const endpoint = document.getElementById('aws-endpoint').value.trim();
+  if(!endpoint){ logEvent('AWS Function URL is required'); return; }
+  if(!/^https:\/\//i.test(endpoint)){ logEvent('Enter a valid HTTPS Function URL'); return; }
+  stopSim(); stopAwsPolling();
+  pollAws(endpoint);
+  awsPollTimer = setInterval(()=>pollAws(endpoint),5000);
+  logEvent('Connecting to AWS SiteWise…');
+};
+document.getElementById('fault-btn').onclick = (e)=>{
+  faultActive = !faultActive;
+  e.target.textContent = faultActive ? 'Clear Fault' : 'Induce Fault (Fan Imbalance)';
+  e.target.classList.toggle('clear', faultActive);
+  logEvent(faultActive ? 'Fault induced: fan imbalance simulated' : 'Fault cleared — recovering');
+};
+
+// ============================================================
+// RENDER LOOP
+// ============================================================
+let t = 0;
+function animate(){
+  requestAnimationFrame(animate);
+  t += 0.016;
+  fanGroup.rotation.x += fanSpeed;
+  // vibration -> visible jitter of whole assembly
+  const jitter = (state.vibration||0.2) * 0.05;
+  motor.position.x = Math.sin(t*40)*jitter;
+  motor.position.z = Math.cos(t*33)*jitter*0.6;
+  renderer.render(scene, camera);
+}
+animate();
+
+// init
+applyState();
+startSim();
+logEvent('Digital twin initialized — demo mode active; AWS endpoint preconfigured');
+</script>
+</body>
+</html>
